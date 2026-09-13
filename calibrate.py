@@ -21,9 +21,12 @@ def main() -> None:
     print("  2. Heart on first photo    -> COORDS['heart_photo_1']")
     print("     (scroll Hinge to the top before screenshotting)")
     print("  3. 'Send Like' button      -> COORDS['send_like_button']")
-    print("     (tap a heart first to open compose, then re-run this script)")
+    print("     (tap a heart first to expand the compose card, then re-run")
+    print("      this script; switch tabs Standouts -> Discover to dismiss it)")
+    print("  4. Bottom nav icons        -> COORDS['nav_*']")
+    print("  5. Filter chips            -> COORDS['sliders_icon'], ['age_chip']")
     print()
-    print("Then edit config.py.")
+    print("Then edit config.py (and SCREEN_WIDTH/HEIGHT if they differ).")
 
 
 if __name__ == "__main__":

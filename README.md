@@ -178,13 +178,17 @@ Then either:
 
 ### 4. Calibrate coordinates (probably skip)
 
-The shipped `config.COORDS` is tuned for a 1080×2424 Pixel (10, or 9
-non-Pro) with gesture navigation. If that's what you have, skip this step.
-`main.py` reads the real screen size at startup and warns if it differs.
+The shipped `config.COORDS` is tuned for a Samsung Galaxy A05 (720×1600,
+3-button navigation) against the Hinge layout as of September 2026. If
+that's what you have, skip this step. `main.py` reads the real screen
+size at startup and warns if it differs.
 
-For other phones (Samsung, Pro-model Pixels, anything not 1080×2424) or
-after a Hinge UI update, update `SCREEN_WIDTH`/`SCREEN_HEIGHT` in
-`config.py`, then run:
+`vision.py` scales its pixel thresholds by `SCREEN_WIDTH / 720`, so on a
+different resolution the vision-found elements (hearts, Send Like,
+comment field) usually land without changes — it's the static `COORDS`
+(skip X, scroll gesture, nav icons, filter chips) that need re-reading.
+For other phones or after a Hinge UI update, update
+`SCREEN_WIDTH`/`SCREEN_HEIGHT` in `config.py`, then run:
 
 ```
 python calibrate.py

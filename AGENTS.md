@@ -90,14 +90,13 @@ works before moving to the next.
    started, USB debugging off, authorization prompt not accepted on
    the phone. If both a phone and an emulator are attached,
    `adb.check_device()` prefers the phone.
-7. Only 1080×2424 devices (Pixel 10, Pixel 9 non-Pro) match the
-   shipped `COORDS`. Anything else — Samsung, Pro Pixels — needs
-   `SCREEN_WIDTH`/`SCREEN_HEIGHT` updated in `config.py` and Phase 3
-   calibration, including the pixel-size thresholds in `vision.py`
-   (heart circle ~126 px, Send Like pill ~595×109, the `x > 800` /
-   `x > 500` cutoffs, and the 171 px comment-input offset), which are
-   all in 1080×2424 pixels. `main.py`'s preflight prints the real
-   screen size and warns on mismatch.
+7. The shipped `COORDS` match a Samsung Galaxy A05 (720×1600, 3-button
+   nav). Anything else needs `SCREEN_WIDTH`/`SCREEN_HEIGHT` updated in
+   `config.py` and Phase 3 calibration of the static coords (skip X,
+   scroll gesture, nav icons, filter chips). `vision.py`'s thresholds
+   are measured at 720 wide and scaled by `SCREEN_WIDTH / 720`, so the
+   vision-found elements usually carry over. `main.py`'s preflight
+   prints the real screen size and warns on mismatch.
 
 ### Phase 3 — Calibration
 
@@ -207,8 +206,8 @@ Dry-run guidance by tier (see Hard Constraints):
 
 ## Self-correcting calibration drift
 
-The shipped `config.COORDS` are tuned for a 1080x2424 Pixel against a
-specific Hinge build. If the user's setup is the same, taps land
+The shipped `config.COORDS` are tuned for a 720x1600 Galaxy A05 against
+a specific Hinge build. If the user's setup is the same, taps land
 correctly. If not, you'll see symptoms like:
 
 - A tap that should open a menu does nothing.
@@ -262,18 +261,31 @@ When this happens, don't just shrug — you can fix it in-session.
 
 ### Patterns by element type
 
-- **Bottom-nav icons**: 5 evenly-spaced slots at y≈2270. Slot centers
-  are screen_width/5 * (slot_index + 0.5). If the nav has moved,
-  re-detect with a brightness peak per column across y=2240-2300.
-- **Heart on photo 1**: vision-detectable as a white ~126x126 circle
-  in the right half (x > 800). Use `vision.find_first_heart` directly
-  to confirm.
-- **Send Like button**: peach pill (R>220, G 190-235, B 170-220),
-  ~595x109. Use `vision.find_send_like`.
+- **Bottom-nav icons**: 5 evenly-spaced slots in Hinge's dark nav
+  band (y 1397-1510 on the A05, icons at y≈1453). Slot centers are
+  screen_width/5 * (slot_index + 0.5). On 3-button-nav phones the
+  system bar sits below that band; don't confuse the two.
+- **Skip X**: a floating white circle with a dark X glyph, fixed at
+  bottom-left (95, 1301 on the A05) in every scroll position. White on
+  white merges with prompt cards, so detect the ~41 px dark glyph, not
+  the circle.
+- **Heart on photo/prompt cards**: near-black circle (~91 px at 720
+  wide) with a white heart cut-out, right-aligned (x > 70% of width),
+  bounding-box fill ~0.68. Use `vision.find_first_heart` directly to
+  confirm.
+- **Compose card**: tapping a heart expands that card inline (no
+  sheet). Send Like is a light peach pill (~238,225,219; ~373x78 at
+  720 wide) on the right; the comment field spans the card ~116 px
+  above it; a purple Rose button sits left of Send Like. The keyboard
+  opens automatically. One BACK closes keyboard + card; a second BACK
+  exits Hinge, so never send two. Switching tabs (Standouts → Discover)
+  also dismisses it without losing the profile. Use
+  `vision.find_send_like`.
 - **Filter chips (top row)**: dark text on white pill outlines around
-  y=225. Detect by finding contiguous dark runs across that band.
+  y=120 (sliders icon x≈65, Age x≈174, Height x≈342). Detect by
+  finding contiguous dark runs across that band.
 - **Back arrows / close X**: 30-50 px dark icons in the top-left
-  (x<150) at y around the action bar (~200).
+  (x<100) at y around the action bar (~120).
 
 ### Things NOT to auto-patch
 

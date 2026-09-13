@@ -33,7 +33,7 @@ def _profile_region_hash(png: bytes) -> str:
     hash; two different profiles should always differ."""
     img = Image.open(io.BytesIO(png))
     w, h = img.size
-    crop = img.crop((0, 120, w, h - 220))
+    crop = img.crop((0, int(h * 0.05), w, int(h * 0.86)))
     return hashlib.md5(crop.tobytes()).hexdigest()
 
 
@@ -127,10 +127,12 @@ def do_like(message: str = "") -> None:
         # Poll for the field to fill. Under host CPU contention (e.g. a
         # game running alongside the emulator) `input text` events can
         # dispatch slower than expected — short fixed waits drop chars.
-        # Expected pixel count grows with message length; require we see
+        # Expected pixel count grows with message length (tuned at 1080
+        # wide; text area scales with width squared); require we see
         # well above the empty baseline before sending.
         deadline = time.monotonic() + 15
-        target_pixels = empty_pixels + max(150, 20 * len(message))
+        px_scale = (config.SCREEN_WIDTH / 1080) ** 2
+        target_pixels = empty_pixels + int(max(150, 20 * len(message)) * px_scale)
         while time.monotonic() < deadline:
             time.sleep(1.0)
             current = vision.comment_field_text_pixels(adb.screenshot(), send_xy)

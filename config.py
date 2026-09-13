@@ -52,11 +52,13 @@ MAX_LIKES_PER_SESSION = 8
 MAX_PROFILES_PER_SESSION = 100
 
 # ---------- Device settings ----------
-# Pixel 10 (and recent non-Pro Pixels) are 1080x2424. main.py reads the
-# real size from the device at startup (`adb shell wm size`) and warns if
-# it differs. Change these to match your phone and re-run calibrate.py.
-SCREEN_WIDTH = 1080
-SCREEN_HEIGHT = 2424
+# Samsung Galaxy A05 (SM-A055F): 720x1600 @ 300 dpi, 3-button navigation.
+# main.py reads the real size from the device at startup (`adb shell wm
+# size`) and warns if it differs. Change these to match your phone and
+# re-run calibrate.py. vision.py scales its pixel thresholds by
+# SCREEN_WIDTH / 720.
+SCREEN_WIDTH = 720
+SCREEN_HEIGHT = 1600
 
 # Number of scroll-and-screenshot passes per profile.
 # Longer profiles (6 photos + 3 prompts) need ~7 frames at the scroll step
@@ -64,45 +66,48 @@ SCREEN_HEIGHT = 2424
 FRAMES_PER_PROFILE = 7
 
 # ---------- Coordinates ----------
-# Pixel 10 defaults (1080x2424, gesture navigation). If your screen is
-# the same resolution and Hinge's layout hasn't shifted, they'll work
-# as-is. If anything is off, run `python calibrate.py` to capture a
-# screenshot and update the values that don't match.
+# Galaxy A05 (720x1600, 3-button nav) against the Hinge layout as of
+# 2026-09: the skip X is a fixed floating button bottom-left; hearts are
+# dark circles at the bottom-right of each photo/prompt card; tapping a
+# heart expands that card inline into a compose card (comment field,
+# Rose, Send Like) rather than opening a sheet. If anything is off, run
+# `python calibrate.py` and update the values that don't match.
 COORDS = {
     # Skip / like action targets (Discover screen, photo 1 at top)
-    "skip_button":       (134, 2068),   # X icon on prompt/photo card
-    "heart_photo_1":     (938, 1421),   # Heart icon on photo 1
+    "skip_button":       (95, 1301),    # floating X, same spot in every frame
+    "heart_photo_1":     (617, 895),    # heart on photo 1 when scrolled to top
 
-    # Compose box (anchors to the element whose heart was tapped; these
-    # values are mostly fallbacks — vision.py re-finds them at tap-time
-    # because the box shifts per profile).
-    "send_like_button":  (687, 1488),
-    "comment_input":     (540, 1317),
-    "compose_close":     (960, 200),
+    # Inline compose card. Fallbacks only — vision.py re-finds them at
+    # tap-time because the card sits wherever the tapped heart was.
+    "send_like_button":  (465, 836),
+    "comment_input":     (360, 720),
 
-    # Scroll gesture (swipe up = scroll down through profile).
-    "scroll_from":       (540, 1700),
-    "scroll_to":         (540, 700),
+    # Scroll gesture (swipe up = scroll down through profile). One swipe
+    # travels ~600-900 px with momentum; 7 frames cover a full profile.
+    "scroll_from":       (360, 1150),
+    "scroll_to":         (360, 450),
     "scroll_duration_ms": 350,
 
-    # Bottom nav (5 evenly-spaced icons across the bottom strip).
-    "nav_discover":      (108, 2270),
-    "nav_standouts":     (324, 2270),
-    "nav_likes_you":     (540, 2270),
-    "nav_matches":       (756, 2270),
-    "nav_self_pfp":      (972, 2270),
+    # Bottom nav (5 evenly-spaced icons, band y 1397-1510).
+    "nav_discover":      (72, 1453),
+    "nav_standouts":     (216, 1453),
+    "nav_likes_you":     (360, 1453),
+    "nav_matches":       (504, 1453),
+    "nav_self_pfp":      (648, 1453),
 
     # Self-profile flow (used by scan_self.py — "what does my profile
     # look like to others"). From Discover: nav_self_pfp → self_avatar →
     # view_tab gets you to a scrollable view of your own profile. Then
     # back_arrow → back_arrow → nav_discover to return.
-    "self_avatar":       (540, 497),    # circle avatar on self tab
-    "view_tab":          (810, 310),    # 'View' tab on profile editor
-    "back_arrow":        (65, 200),     # top-left back arrow
+    # UNCALIBRATED on the A05 — scaled 2/3 from the Pixel values. Verify
+    # with calibrate.py before running scan_self.py.
+    "self_avatar":       (360, 331),
+    "view_tab":          (540, 207),
+    "back_arrow":        (43, 133),
 
     # Discover filter row (tap the chip to open its bottom sheet).
-    "sliders_icon":      (95, 225),     # opens Dating Preferences
-    "age_chip":          (460, 225),    # opens Age filter sheet
+    "sliders_icon":      (65, 120),     # opens Dating Preferences
+    "age_chip":          (174, 120),    # opens Age filter sheet
 }
 
 # ---------- Timing ----------
@@ -155,7 +160,7 @@ OLLAMA_HOST = None
 BASE_DIR = Path(__file__).parent
 DEBUG_DIR = BASE_DIR / "debug"
 SCREENSHOTS_DIR = BASE_DIR / "screenshots"
-SAVE_DEBUG_FRAMES = True  # keep frames + decisions in debug/ for review
+SAVE_DEBUG_FRAMES = False  # True keeps frames + decisions in debug/ for review
 
 
 def _apply_mode() -> None:
