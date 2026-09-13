@@ -5,14 +5,14 @@
 
 <p align="center">
   <strong>LLM = Love Lookin' Model.</strong><br/>
-  A stitched-vision + LLM-judge loop that drives a real Hinge install on an Android emulator — it reads each profile, judges it against <em>your</em> rubric, and skips or likes with a personalized opener.
+  A stitched-vision + LLM-judge loop that drives a real Hinge install on an Android phone (or emulator) — it reads each profile, judges it against <em>your</em> rubric, and skips or likes with a personalized opener.
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-FF4FD8.svg"></a>
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-FF4FD8?logo=python&logoColor=white">
   <img alt="Judge: Claude or Ollama" src="https://img.shields.io/badge/judge-Claude%20%C2%B7%20Ollama-FF4FD8">
-  <img alt="Drives Android via ADB" src="https://img.shields.io/badge/emulator-Android%20%C2%B7%20ADB-FF4FD8">
+  <img alt="Drives Android via ADB" src="https://img.shields.io/badge/device-Android%20%C2%B7%20ADB-FF4FD8">
   <a href="#-read-this-first"><img alt="Violates Hinge ToS — use at your own risk" src="https://img.shields.io/badge/%E2%9A%A0-violates%20Hinge%20ToS-red"></a>
 </p>
 
@@ -33,8 +33,8 @@
 ---
 
 HingeAuto is what you get when you point a vision-LLM at a phone screen and let
-it date for you. An Android emulator runs a real Hinge install; this repo drives
-it over ADB, judging every profile against a rubric **you** write and acting on
+it date for you. An Android phone (or emulator) runs a real Hinge install; this
+repo drives it over ADB, judging every profile against a rubric **you** write and acting on
 the verdict — skip, or like with a personalized opener. It runs on **Claude** out
 of the box, or completely free on a local **Ollama** model. The fun part is the
 AI engineering — stitched-frame vision plus a forced structured decision; the
@@ -54,6 +54,10 @@ for a single throwaway account, not a dating strategy.
   use the subscription — the bot does the liking for you, so you get full
   value without ever opening the app. With Hinge+, bump
   `MAX_LIKES_PER_SESSION` to 25–50 and run multiple sessions across the day.
+- **A real phone is lower-risk than an emulator.** Emulators fail Play
+  Integrity device attestation and are trivially fingerprintable, which is
+  the kind of signal that triggers Hinge's identity-verification step-ups.
+  A physical phone over USB removes that signal (not the behavioral ones).
 - **No warranty. No support.** Your account, your problem.
 - The repo exists because automating a stitched-vision + LLM-judge loop on
   a phone UI is an interesting AI engineering exercise — not because anyone
@@ -61,7 +65,7 @@ for a single throwaway account, not a dating strategy.
 
 ## What it does
 
-Drives an Android emulator running Hinge through ADB. For each profile it
+Drives an Android device running Hinge through ADB. For each profile it
 scrolls top-to-bottom, screenshots the frames, asks Claude (or a local
 Ollama model) to judge against a user-defined rubric, and either taps Skip
 or taps the heart and types a personalized opener.
@@ -78,55 +82,77 @@ or taps the heart and types a personalized opener.
 > This repo ships with [`AGENTS.md`](./AGENTS.md) (and [`CLAUDE.md`](./CLAUDE.md)).
 > If you cloned this and you're not sure where to start, open the directory
 > in Claude Code, Codex CLI, Cursor, or any agent that respects `AGENTS.md`
-> and say _"help me set this up."_ The agent will walk you through emulator
-> config, calibration, writing a rubric, and the first live run.
+> and say _"help me set this up."_ The agent will walk you through device
+> setup, calibration, writing a rubric, and the first live run.
 >
 > If you'd rather do it manually, read on.
 
 ## Quickstart
 
-### 1. Set up Android Studio + a Pixel 10 emulator
+### 1. Connect an Android device
 
-If you've never used Android Studio, this is the longest step. Skip ahead
-if you already have an emulator running with `adb devices` showing it.
+You need `adb` on your PATH. The smallest download is Google's standalone
+**Platform Tools** (<https://developer.android.com/tools/releases/platform-tools>,
+~10 MB) — unzip and add the folder to PATH. Android Studio also bundles it
+(`~/Library/Android/sdk/platform-tools/` on Mac,
+`%LOCALAPPDATA%\Android\Sdk\platform-tools\` on Windows).
+
+#### Option A: a real phone (recommended)
+
+Lower ban risk than an emulator (see [Read this first](#-read-this-first))
+and no Play Store account hoops — install Hinge the normal way.
+
+1. **Enable USB debugging.** Settings → About phone → tap **Build number**
+   7 times. Then Settings → Developer options → turn on **USB debugging**.
+   While you're there, also turn on **Stay awake** (screen never sleeps
+   while charging). Turn USB debugging back off when you're done using this.
+2. **Plug the phone into your computer.** Accept the "Allow USB debugging?"
+   prompt on the phone (tick "Always allow from this computer").
+3. **Confirm the connection.** From a fresh terminal:
+
+   ```
+   adb devices
+   ```
+
+   You should see your phone's serial with `device` next to it. If it says
+   `unauthorized`, look for the prompt on the phone.
+4. **Turn off keyboard autocorrect** for the session (Settings → General
+   management → Samsung Keyboard / Gboard → Predictive text / Auto-correct
+   → off). Openers are typed via keyevents, and autocorrect will rewrite
+   them.
+5. **Open Hinge** on the **Discover** tab and leave the phone unlocked.
+   `main.py` checks screen state and the foreground app before it starts
+   tapping, and refuses to run if the phone is locked or on another app.
+
+Wireless debugging (Settings → Developer options → Wireless debugging,
+then `adb pair` / `adb connect`) also works, but USB is faster for the ~7
+screenshots per profile and "Stay awake" only applies while charging.
+Optional: [scrcpy](https://github.com/Genymobile/scrcpy) mirrors the phone
+to your desktop over the same adb link so you can watch the loop run.
+
+#### Option B: an Android emulator
+
+If you'd rather not use a real phone. Expect Hinge to be more suspicious of
+it, and expect Play Store sign-in on a throwaway Google account to demand
+identity verification.
 
 1. Download Android Studio from <https://developer.android.com/studio>
-   (free, ~1 GB). During install, keep "Android SDK" and "Android Virtual
-   Device" checked — they bundle the `adb` CLI this repo needs.
-2. Open Android Studio. On the Welcome screen click **More Actions →
-   Virtual Device Manager** (or **Tools → Device Manager** if you've
-   already opened a project).
-3. Click **+ Create Device** (or the **+** icon).
-4. Under **Phone**, select **Pixel 10**. If your Android Studio version
-   doesn't list Pixel 10 yet, **Pixel 9** has the same 1080×2424 screen
-   and works identically. Click **Next**.
-5. Pick a system image. **API 34 (Android 14) with Google Play** is a good
-   default — Hinge installs cleanly from the Play Store on it. Download the
-   image if there's a download icon next to it (~1 GB, one-time). Click
-   **Next → Finish**.
-6. Back in Device Manager, click the **▶ play** arrow on the new device
-   row. First boot takes 2–5 minutes.
-7. In the emulator, open **Play Store**, sign in with a throwaway Google
-   account, search **Hinge**, install, open, finish onboarding (one account
-   only — see [Read this first](#-read-this-first)), navigate to the
-   **Discover** tab.
+   (free, ~1 GB). Keep "Android SDK" and "Android Virtual Device" checked.
+2. **More Actions → Virtual Device Manager → + Create Device**. Under
+   **Phone**, pick **Pixel 10** (or **Pixel 9**, same 1080×2424 screen —
+   the shipped coords match either). Pick a system image **with Google
+   Play** (API 34 is a good default), download it, **Next → Finish**.
+3. Click **▶** on the device row. First boot takes 2–5 minutes.
+4. In the emulator, open **Play Store**, sign in with a throwaway Google
+   account, search **Hinge**, install, open, finish onboarding, navigate
+   to the **Discover** tab.
+5. Confirm `adb devices` shows `emulator-5554   device` (or similar).
 
 **Cold Boot when things get weird.** The emulator persists state via
-snapshots ("Quick Boot"), so a borked Hinge state or hung input can survive
-restarts. To wipe the snapshot: in Device Manager, click the **⋮** menu on
-the device row → **Cold Boot Now**. This is the emulator-equivalent of
-yanking the battery.
+snapshots, so a borked Hinge state or hung input can survive restarts.
+Device Manager → **⋮** on the device row → **Cold Boot Now**.
 
-**Confirm `adb` works.** From a fresh terminal:
-
-```
-adb devices
-```
-
-You should see `emulator-5554   device` (or similar). If `adb` isn't on
-your PATH, find it under your Android SDK directory (on Windows:
-`%LOCALAPPDATA%\Android\Sdk\platform-tools\`; on Mac:
-`~/Library/Android/sdk/platform-tools/`) and add that to PATH.
+If a phone and an emulator are both attached, the scripts pick the phone.
 
 ### 2. Install repo dependencies
 
@@ -152,10 +178,13 @@ Then either:
 
 ### 4. Calibrate coordinates (probably skip)
 
-The shipped `config.COORDS` is tuned for a Pixel 10 emulator at 1080×2424.
-If that's what you set up, you can skip this step.
+The shipped `config.COORDS` is tuned for a 1080×2424 Pixel (10, or 9
+non-Pro) with gesture navigation. If that's what you have, skip this step.
+`main.py` reads the real screen size at startup and warns if it differs.
 
-For other devices or after a Hinge UI update, run:
+For other phones (Samsung, Pro-model Pixels, anything not 1080×2424) or
+after a Hinge UI update, update `SCREEN_WIDTH`/`SCREEN_HEIGHT` in
+`config.py`, then run:
 
 ```
 python calibrate.py
@@ -174,7 +203,7 @@ your first run.
 
 ### 6. Run
 
-With Hinge open on the Discover tab in the emulator:
+With Hinge open on the Discover tab and the device unlocked:
 
 ```
 python main.py
@@ -255,7 +284,9 @@ ADB capture  →  frame stitching  →  Claude judge  →  action
                                        vision.py      adb.py
 ```
 
-- **`adb.py`** wraps the `adb` CLI: screenshot, tap, swipe, type.
+- **`adb.py`** wraps the `adb` CLI: device selection, preflight checks
+  (screen size, awake/unlocked, Hinge in foreground), screenshot, tap,
+  swipe, type.
 - **`main.py`** is the loop. For each profile: scroll-to-top, capture N
   frames, run them through the active backend's `judge()`, then either skip
   or scroll back, tap the heart, type the opener, and tap Send Like.

@@ -1,15 +1,25 @@
 """Thin wrapper around `adb` commands."""
 
 import random
+import re
 import shlex
 import subprocess
 import time
 
 import config
 
+HINGE_PACKAGE = "co.hinge.app"
+
+# Serial chosen by check_device(); every later command is pinned to it so
+# a phone and an emulator can be attached at the same time.
+_SERIAL: str | None = None
+
 
 def _run(args: list[str], capture: bool = False) -> bytes | None:
-    cmd = ["adb"] + args
+    cmd = ["adb"]
+    if _SERIAL:
+        cmd += ["-s", _SERIAL]
+    cmd += args
     if capture:
         result = subprocess.run(cmd, capture_output=True, check=True)
         return result.stdout
@@ -17,15 +27,85 @@ def _run(args: list[str], capture: bool = False) -> bytes | None:
     return None
 
 
+def _shell(args: list[str]) -> str:
+    return _run(["shell"] + args, capture=True).decode(errors="replace")
+
+
 def check_device() -> str:
-    """Raise if no device is connected. Return the serial of the first device."""
+    """Pick a device, pin all later commands to it, and return its serial.
+
+    Prefers a physical device over an emulator when both are attached.
+    """
+    global _SERIAL
     out = _run(["devices"], capture=True).decode()
-    lines = [l for l in out.splitlines()[1:] if l.strip() and "\tdevice" in l]
-    if not lines:
+    rows = [l.split("\t") for l in out.splitlines()[1:] if "\t" in l]
+    ready = [serial for serial, state in rows if state.strip() == "device"]
+    if not ready:
+        unauthorized = [s for s, state in rows if state.strip() == "unauthorized"]
+        if unauthorized:
+            raise RuntimeError(
+                f"Device {unauthorized[0]} is attached but unauthorized. "
+                "Accept the 'Allow USB debugging' prompt on the phone."
+            )
         raise RuntimeError(
-            "No ADB device found. Start your emulator and run `adb devices`."
+            "No ADB device found. Plug in a phone with USB debugging enabled "
+            "(or start an emulator) and check `adb devices`."
         )
-    return lines[0].split("\t")[0]
+    physical = [s for s in ready if not s.startswith("emulator-")]
+    _SERIAL = (physical or ready)[0]
+    return _SERIAL
+
+
+def screen_size() -> tuple[int, int]:
+    """Current logical screen size. Honors a `wm size` override if set."""
+    out = _shell(["wm", "size"])
+    m = (re.search(r"Override size:\s*(\d+)x(\d+)", out)
+         or re.search(r"Physical size:\s*(\d+)x(\d+)", out))
+    if not m:
+        raise RuntimeError(f"Couldn't parse `wm size` output: {out!r}")
+    return int(m.group(1)), int(m.group(2))
+
+
+def keep_awake() -> None:
+    """Keep the screen on while the device is plugged in."""
+    _run(["shell", "svc", "power", "stayon", "true"])
+
+
+def screen_on() -> bool:
+    return "mWakefulness=Awake" in _shell(["dumpsys", "power"])
+
+
+def keyguard_showing() -> bool | None:
+    """True if the lock screen is up; None if the dump format is unrecognized."""
+    out = _shell(["dumpsys", "window"])
+    m = re.search(r"(?:isStatusBarKeyguard|mDreamingLockscreen|mShowingLockscreen)=(true|false)", out)
+    return None if m is None else m.group(1) == "true"
+
+
+def foreground_package() -> str | None:
+    out = _shell(["dumpsys", "activity", "activities"])
+    m = re.search(r"(?:topResumedActivity|mResumedActivity)[^\n]*?\s([\w.]+)/", out)
+    return m.group(1) if m else None
+
+
+def preflight() -> None:
+    """Refuse to start tapping unless the device looks ready for the loop."""
+    w, h = screen_size()
+    print(f"Screen:   {w}x{h}")
+    if (w, h) != (config.SCREEN_WIDTH, config.SCREEN_HEIGHT):
+        print(f"WARN: config expects {config.SCREEN_WIDTH}x{config.SCREEN_HEIGHT}. "
+              "COORDS and vision thresholds will be off — run calibrate.py "
+              "and update config.py.")
+    keep_awake()
+    if not screen_on():
+        raise RuntimeError("Screen is off. Wake and unlock the phone, then re-run.")
+    if keyguard_showing():
+        raise RuntimeError("Phone is locked. Unlock it, then re-run.")
+    pkg = foreground_package()
+    if pkg and pkg != HINGE_PACKAGE:
+        raise RuntimeError(
+            f"Foreground app is {pkg}, not Hinge. Open Hinge on the Discover tab."
+        )
 
 
 def screenshot() -> bytes:

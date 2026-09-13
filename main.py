@@ -218,6 +218,7 @@ def main() -> int:
 
     serial = adb.check_device()
     print(f"Connected to: {serial}")
+    adb.preflight()
     age_band = (
         f"age {config.AGE_MIN}-{config.AGE_MAX}"
         if (config.AGE_MIN is not None or config.AGE_MAX is not None)

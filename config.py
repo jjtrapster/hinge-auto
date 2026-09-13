@@ -4,10 +4,10 @@ PREFERENCES, AGE_MIN/MAX, and MESSAGE_VOICE come from the active mode (see
 `modes/`). Set ACTIVE_MODE here for the persistent default; override per-run
 via `python main.py --mode <name>`.
 
-The COORDS defaults below are calibrated for a Pixel 10 emulator
-(1080x2424). If that's what you're running and Hinge hasn't shifted
-its layout, they should work as-is. Otherwise run `python calibrate.py`
-and update the values that don't match your device.
+The COORDS defaults below are calibrated for a 1080x2424 Pixel (10, or 9
+non-Pro) — emulator or real phone. If that's what you're running and Hinge
+hasn't shifted its layout, they should work as-is. Otherwise run
+`python calibrate.py` and update the values that don't match your device.
 """
 
 from pathlib import Path
@@ -51,9 +51,10 @@ DRY_RUN = False
 MAX_LIKES_PER_SESSION = 8
 MAX_PROFILES_PER_SESSION = 100
 
-# ---------- Emulator settings ----------
-# Pixel 10 (and recent Pixel models) are 1080x2424. Change if you're using
-# a different emulator profile — and re-run calibrate.py after any change.
+# ---------- Device settings ----------
+# Pixel 10 (and recent non-Pro Pixels) are 1080x2424. main.py reads the
+# real size from the device at startup (`adb shell wm size`) and warns if
+# it differs. Change these to match your phone and re-run calibrate.py.
 SCREEN_WIDTH = 1080
 SCREEN_HEIGHT = 2424
 
@@ -63,11 +64,10 @@ SCREEN_HEIGHT = 2424
 FRAMES_PER_PROFILE = 7
 
 # ---------- Coordinates ----------
-# Pixel 10 emulator defaults (1080x2424). These values are
-# accurate for the standard Pixel 10 AVD; if your screen is the same
-# resolution and Hinge's layout hasn't shifted, they'll work as-is. If
-# anything is off, run `python calibrate.py` to capture a screenshot and
-# update the values that don't match.
+# Pixel 10 defaults (1080x2424, gesture navigation). If your screen is
+# the same resolution and Hinge's layout hasn't shifted, they'll work
+# as-is. If anything is off, run `python calibrate.py` to capture a
+# screenshot and update the values that don't match.
 COORDS = {
     # Skip / like action targets (Discover screen, photo 1 at top)
     "skip_button":       (134, 2068),   # X icon on prompt/photo card

@@ -10,8 +10,8 @@ agents that respect the AGENTS.md convention.
 
 ## What this project is
 
-A Hinge automation loop. An Android emulator runs Hinge; this repo
-drives it via ADB and Claude (or Ollama). For each profile it captures
+A Hinge automation loop. An Android phone (or emulator) runs Hinge; this
+repo drives it via ADB and Claude (or Ollama). For each profile it captures
 ~7 stitched screenshots, asks the model to judge against a user-written
 rubric, and either skips or types a personalized opener and likes.
 
@@ -60,33 +60,51 @@ works before moving to the next.
    `.env` from `.env.example` accordingly. See the README "Backends"
    section for the toggle.
 
-### Phase 2 — Emulator + Hinge
+### Phase 2 — Device + Hinge
 
-1. The user needs an Android emulator running. Pixel 10 (1080×2424) is
-   the calibrated default; other devices will need recalibration.
-2. Install Hinge from the **Play Store** inside the emulator (use a
-   system image with Google Play, e.g. API 34): sign into a throwaway
-   Google account, search Hinge, install — same as on a physical phone.
-   (If their image lacks the Play Store they'd have to sideload an APK
-   from a source they trust; don't link to or recommend specific pirate
-   APK sites.)
-3. After install, the user signs in (throwaway account, see Hard
-   Constraints) and navigates to the Discover tab.
-4. **Strongly recommend Hinge+.** Without it the user is capped at
+1. Ask: real phone or emulator? **Recommend a real phone.** Emulators
+   fail Play Integrity attestation and are easy to fingerprint, which
+   raises the odds of identity-verification step-ups and bans; a
+   throwaway Google account on an emulator also tends to hit Play
+   Store identity verification before Hinge is even installed. Don't
+   help with fingerprint spoofing to make an emulator look real.
+2. **Physical phone path:** Developer options → USB debugging on, plus
+   "Stay awake". Plug in over USB, accept the authorization prompt on
+   the phone. Turn off keyboard autocorrect (Samsung Keyboard / Gboard)
+   so `input text` openers aren't rewritten. Tell the user to switch
+   USB debugging off again when they're done with the tool.
+3. **Emulator path:** Pixel 10 (1080×2424) AVD with a Google Play
+   system image (API 34). Install Hinge from the Play Store inside the
+   emulator with a throwaway Google account. (If their image lacks the
+   Play Store they'd have to sideload an APK from a source they trust;
+   don't link to or recommend specific pirate APK sites.)
+4. Install Hinge, sign in (throwaway account, see Hard Constraints),
+   navigate to the Discover tab.
+5. **Strongly recommend Hinge+.** Without it the user is capped at
    ~8–10 likes/day on the free tier, which makes this tool pointless.
    With it, the bot effectively becomes the subscription's labor — the
    user gets full daily-like-allotment value without ever opening
    Hinge. Frame it that way, not as an upsell.
-5. Run `adb devices` to confirm the emulator is visible. Troubleshoot
-   if not (most common issue: emulator not started, or USB debugging
-   off on a physical device).
+6. Run `adb devices` to confirm the device shows as `device` (not
+   `unauthorized` or `offline`). Most common issues: emulator not
+   started, USB debugging off, authorization prompt not accepted on
+   the phone. If both a phone and an emulator are attached,
+   `adb.check_device()` prefers the phone.
+7. Only 1080×2424 devices (Pixel 10, Pixel 9 non-Pro) match the
+   shipped `COORDS`. Anything else — Samsung, Pro Pixels — needs
+   `SCREEN_WIDTH`/`SCREEN_HEIGHT` updated in `config.py` and Phase 3
+   calibration, including the pixel-size thresholds in `vision.py`
+   (heart circle ~126 px, Send Like pill ~595×109, the `x > 800` /
+   `x > 500` cutoffs, and the 171 px comment-input offset), which are
+   all in 1080×2424 pixels. `main.py`'s preflight prints the real
+   screen size and warns on mismatch.
 
 ### Phase 3 — Calibration
 
 The shipped `COORDS` in `config.py` are placeholders. They will be
 wrong for the user's emulator.
 
-1. With Hinge open on the Discover tab in the emulator, run
+1. With Hinge open on the Discover tab on the device, run
    `python calibrate.py`. It saves `calibrate.png` to the repo root.
 2. Open `calibrate.png` in any image viewer that shows cursor pixel
    coordinates (Paint on Windows, Preview's "Show Inspector" on Mac,
@@ -176,8 +194,8 @@ Dry-run guidance by tier (see Hard Constraints):
   optional `AGE_MIN/MAX`, `MESSAGE_VOICE`, `PREMADES`.
 - `voice/` — message-style templates referenced by `MESSAGE_VOICE`
   from modes.
-- `adb.py` / `vision.py` — emulator I/O and per-profile UI element
-  detection.
+- `adb.py` / `vision.py` — device I/O (selection, preflight, capture,
+  input) and per-profile UI element detection.
 - `filters.py` / `locations.py` — optional in-app filter automation;
   need calibrated coord files.
 - `metrics.py` — JSONL session logging.
@@ -189,9 +207,9 @@ Dry-run guidance by tier (see Hard Constraints):
 
 ## Self-correcting calibration drift
 
-The shipped `config.COORDS` are tuned for a Pixel 10 emulator at
-1080x2424 against a specific Hinge build. If the user's setup is the
-same, taps land correctly. If not, you'll see symptoms like:
+The shipped `config.COORDS` are tuned for a 1080x2424 Pixel against a
+specific Hinge build. If the user's setup is the same, taps land
+correctly. If not, you'll see symptoms like:
 
 - A tap that should open a menu does nothing.
 - A tap that should advance a profile force-skips and lands on a
