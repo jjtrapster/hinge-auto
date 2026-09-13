@@ -130,10 +130,21 @@ EFFORT = "medium"  # low | medium | high
 
 # ---------- Ollama settings (when JUDGE_BACKEND == "ollama") ----------
 # Vision-capable models that handle multiple images per turn:
-#   "qwen2.5-vl"        — strong all-around vision model (recommended)
-#   "qwen2.5-vl:7b"     — smaller, faster, weaker
+#   "qwen2.5vl"        — strong all-around vision model (recommended)
+#   "qwen2.5vl:7b"     — smaller, faster, weaker
 #   "llama3.2-vision"   — alternative; tool-calling can be flakier
-OLLAMA_MODEL = "qwen2.5-vl"
+OLLAMA_MODEL = "qwen2.5vl"
+
+# Downscale frames before sending them to Ollama. Image tokens scale with
+# pixel count, so 0.5 is ~4x fewer tokens and ~4x faster per profile
+# (measured 161s -> 41s for 7 frames of qwen2.5vl on a 16 GB M-series
+# Mac). Profile text is still legible at half res. 1.0 = send full-res.
+OLLAMA_FRAME_SCALE = 0.5
+
+# Context window. Ollama defaults to 4096, but 7 full-res frames plus the
+# system prompt run ~15k tokens (~5.5k at OLLAMA_FRAME_SCALE = 0.5).
+# Raise if you add frames or a long rubric.
+OLLAMA_NUM_CTX = 16384
 
 # OLLAMA_HOST: None or "" -> default http://localhost:11434
 #              "https://ollama.com" -> Ollama Cloud (requires OLLAMA_API_KEY)

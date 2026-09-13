@@ -6,29 +6,34 @@ Targets a vision-capable model running on either:
   - Ollama Cloud  (https://ollama.com — free tier available; set
     `OLLAMA_HOST=https://ollama.com` and `OLLAMA_API_KEY=...`)
 
-The same JSON tool schema as the Anthropic backend is used (via
-`judge_common.DECIDE_INPUT_SCHEMA`), but Ollama's tool format is
-OpenAI-compatible so it gets wrapped differently.
+The same JSON schema as the Anthropic backend (`judge_common.
+DECIDE_INPUT_SCHEMA`) is passed as Ollama's `format=` structured-output
+constraint rather than as a tool: most open vision models (`qwen2.5vl`
+included) don't support tool calling in Ollama, while constrained JSON
+decoding works with every model.
 
-Honest tradeoff vs Anthropic: open vision models (`qwen2.5-vl`,
-`llama3.2-vision`) are noticeably less reliable at extracting structured
-output across a 7-frame profile, and the opener writing is weaker. Cost
-is the win — free if you self-host or stay inside Ollama Cloud's free
-tier.
+Honest tradeoff vs Anthropic: open vision models are noticeably weaker
+at judging a 7-frame profile, and the opener writing is weaker. Cost is
+the win — free if you self-host or stay inside Ollama Cloud's free tier.
 
 Set in config.py:
   JUDGE_BACKEND = "ollama"
-  OLLAMA_MODEL  = "qwen2.5-vl"        # or "llama3.2-vision"
+  OLLAMA_MODEL  = "qwen2.5vl"        # or "llama3.2-vision"
   OLLAMA_HOST   = None                # default localhost; cloud:
                                       # "https://ollama.com"
+  OLLAMA_FRAME_SCALE = 0.5            # downscale frames; ~4x faster
+  OLLAMA_NUM_CTX = 16384              # 7 full-res frames ~ 15k tokens
 
 Set in your .env (or shell):
   OLLAMA_API_KEY=...   # required for Ollama Cloud, ignored locally
 """
 
 import base64
+import io
 import json
 import os
+
+from PIL import Image
 
 import config
 from judge_common import (
@@ -59,20 +64,21 @@ def _client():
     return Client(**kwargs)
 
 
-def _tool_spec() -> dict:
-    """OpenAI-compatible tool envelope wrapping the shared schema."""
-    return {
-        "type": "function",
-        "function": {
-            "name": "submit_decision",
-            "description": "Submit a like/skip decision for this Hinge profile.",
-            "parameters": DECIDE_INPUT_SCHEMA,
-        },
-    }
+def _downscale(png: bytes, scale: float) -> bytes:
+    if scale >= 1.0:
+        return png
+    im = Image.open(io.BytesIO(png))
+    im = im.resize((max(1, int(im.width * scale)), max(1, int(im.height * scale))),
+                   Image.LANCZOS)
+    buf = io.BytesIO()
+    im.save(buf, "PNG")
+    return buf.getvalue()
 
 
 def _images_b64(frames: list[bytes]) -> list[str]:
-    return [base64.standard_b64encode(f).decode("utf-8") for f in frames]
+    scale = float(getattr(config, "OLLAMA_FRAME_SCALE", 1.0))
+    return [base64.standard_b64encode(_downscale(f, scale)).decode("utf-8")
+            for f in frames]
 
 
 def _decision_from_args(args: dict, usage: dict) -> Decision:
@@ -101,12 +107,12 @@ def _decision_from_args(args: dict, usage: dict) -> Decision:
 def judge(frames: list[bytes]) -> Decision:
     """Given an ordered list of PNG frames of one profile, return a Decision."""
     client = _client()
-    model = getattr(config, "OLLAMA_MODEL", "qwen2.5-vl")
+    model = getattr(config, "OLLAMA_MODEL", "qwen2.5vl")
 
     user_text = (
         f"Above are {len(frames)} screenshots of one Hinge profile, in order "
-        "from top to bottom. Decide whether to like or skip, and call the "
-        "submit_decision tool with the structured result."
+        "from top to bottom. Decide whether to like or skip, and respond "
+        "with the submit_decision JSON object."
     )
 
     response = client.chat(
@@ -119,10 +125,11 @@ def judge(frames: list[bytes]) -> Decision:
                 "images": _images_b64(frames),
             },
         ],
-        tools=[_tool_spec()],
-        # Hint Ollama toward JSON if it falls back to content output
-        # instead of a tool call.
-        options={"temperature": 0.2},
+        format=DECIDE_INPUT_SCHEMA,
+        options={
+            "temperature": 0.2,
+            "num_ctx": getattr(config, "OLLAMA_NUM_CTX", 16384),
+        },
     )
 
     usage = {
@@ -133,46 +140,27 @@ def judge(frames: list[bytes]) -> Decision:
     }
 
     message = response.get("message") if isinstance(response, dict) else response.message
-    tool_calls = (
-        message.get("tool_calls") if isinstance(message, dict)
-        else getattr(message, "tool_calls", None)
-    ) or []
-
-    for call in tool_calls:
-        fn = call["function"] if isinstance(call, dict) else call.function
-        name = fn["name"] if isinstance(fn, dict) else fn.name
-        args = fn["arguments"] if isinstance(fn, dict) else fn.arguments
-        if name != "submit_decision":
-            continue
-        if isinstance(args, str):
-            try:
-                args = json.loads(args)
-            except json.JSONDecodeError:
-                args = {}
-        decision = _decision_from_args(args, usage)
-        enforce_premade_verbatim(decision)
-        return decision
-
-    # Fallback: some models return JSON in `content` instead of a tool call
     content = (
         message.get("content") if isinstance(message, dict)
         else getattr(message, "content", "")
     ) or ""
-    if content:
-        # Strip code fences / leading prose
-        start = content.find("{")
-        end = content.rfind("}")
-        if start >= 0 and end > start:
-            try:
-                data = json.loads(content[start : end + 1])
-                decision = _decision_from_args(data, usage)
-                enforce_premade_verbatim(decision)
-                return decision
-            except json.JSONDecodeError:
-                pass
+    # Constrained decoding should yield bare JSON, but tolerate fences or
+    # leading prose from models that ignore the constraint.
+    start = content.find("{")
+    end = content.rfind("}")
+    if start >= 0 and end > start:
+        try:
+            data = json.loads(content[start : end + 1])
+        except json.JSONDecodeError:
+            data = None
+        if isinstance(data, dict):
+            decision = _decision_from_args(data, usage)
+            enforce_premade_verbatim(decision)
+            return decision
 
     raise RuntimeError(
-        f"Ollama ({model}) did not return a usable submit_decision call. "
-        f"Try a different OLLAMA_MODEL (e.g. 'qwen2.5-vl:7b' or "
-        f"'llama3.2-vision:11b') or check that the model is pulled."
+        f"Ollama ({model}) did not return a usable submit_decision JSON "
+        f"object (got: {content[:200]!r}). Try a different OLLAMA_MODEL "
+        f"(e.g. 'qwen2.5vl:32b' or 'llama3.2-vision:11b') or check that "
+        f"the model is pulled."
     )
