@@ -36,6 +36,11 @@ JUDGE_FRAMES = None
 # what the model wrote. None = the model picks or writes the opener.
 FORCE_PREMADE_ID = None
 
+# Optional: only let a skip stand when the model rates its confidence
+# "high"; any other skip is flipped to a like. Enforces "when in doubt,
+# like" for models that turn uncertainty into skips.
+SKIP_NEEDS_HIGH_CONFIDENCE = False
+
 # Optional verbatim openers the judge can pick from instead of writing
 # fresh copy. The selected `message` is sent EXACTLY as written. Leave
 # as `[]` to disable.

@@ -40,6 +40,7 @@ import config
 from judge_common import (
     DECIDE_INPUT_SCHEMA,
     Decision,
+    apply_decision_guards,
     build_system_prompt,
     enforce_premade_verbatim,
 )
@@ -181,6 +182,7 @@ def judge(frames: list[bytes]) -> Decision:
             data = None
         if isinstance(data, dict):
             decision = _decision_from_args(data, usage)
+            apply_decision_guards(decision)
             enforce_premade_verbatim(decision)
             return decision
 

@@ -267,6 +267,28 @@ def build_system_prompt() -> str:
     )
 
 
+def apply_decision_guards(decision: Decision) -> None:
+    """Mode-level guards on the decision itself. Runs before the message
+    rules so a flipped decision gets the right opener.
+
+    SKIP_NEEDS_HIGH_CONFIDENCE: a skip the model rates below "high"
+    confidence becomes a like. Encodes "when in doubt, like" in code —
+    small models turn any uncertainty into a skip no matter how the
+    rubric is worded, and this takes that option away.
+    """
+    if (
+        getattr(config, "SKIP_NEEDS_HIGH_CONFIDENCE", False)
+        and decision.decision == "skip"
+        and decision.confidence != "high"
+    ):
+        decision.reasoning = (
+            f"[flipped to like: skip at {decision.confidence} confidence] "
+            + decision.reasoning
+        )
+        decision.decision = "like"
+        decision.skip_reason = "none"
+
+
 def enforce_premade_verbatim(decision: Decision) -> None:
     """Make the message obey the mode regardless of what the model wrote.
 

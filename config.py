@@ -28,6 +28,7 @@ MODE_NAME: str = ""
 PREMADES: list[dict] = []
 JUDGE_FRAMES: int | None = None      # send only the first N captured frames to the judge
 FORCE_PREMADE_ID: str | None = None  # every like sends this premade, whatever the model wrote
+SKIP_NEEDS_HIGH_CONFIDENCE: bool = False  # a skip below "high" confidence becomes a like
 
 # ---------- Run mode ----------
 # DRY_RUN = False -> actually like / send messages (default)
@@ -205,6 +206,7 @@ def _apply_mode() -> None:
     g["PREMADES"] = list(getattr(mode, "PREMADES", []))
     g["JUDGE_FRAMES"] = getattr(mode, "JUDGE_FRAMES", None)
     g["FORCE_PREMADE_ID"] = getattr(mode, "FORCE_PREMADE_ID", None)
+    g["SKIP_NEEDS_HIGH_CONFIDENCE"] = bool(getattr(mode, "SKIP_NEEDS_HIGH_CONFIDENCE", False))
     if g["FORCE_PREMADE_ID"] and g["FORCE_PREMADE_ID"] not in {p["id"] for p in g["PREMADES"]}:
         raise ValueError(
             f"mode {mode.NAME!r}: FORCE_PREMADE_ID={g['FORCE_PREMADE_ID']!r} "

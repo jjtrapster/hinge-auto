@@ -13,6 +13,7 @@ import config
 from judge_common import (
     DECIDE_INPUT_SCHEMA,
     Decision,
+    apply_decision_guards,
     build_system_prompt,
     enforce_premade_verbatim,
 )
@@ -76,6 +77,7 @@ def judge(frames: list[bytes]) -> Decision:
     for block in response.content:
         if block.type == "tool_use" and block.name == "submit_decision":
             decision = Decision(**block.input, usage=usage)
+            apply_decision_guards(decision)
             enforce_premade_verbatim(decision)
             return decision
 

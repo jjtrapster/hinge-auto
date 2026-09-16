@@ -1,9 +1,17 @@
-"""Twenty-somethings mode — photo-only, first two photos, one fixed opener.
+"""Twenty-somethings mode — photo-only, lenient, one rule, one opener.
 
 Age band 21-29 (set it in Hinge's own Age filter; see AGE_MIN below).
 The judge looks at the person in photos 1 and 2 and nothing else — no
-prompts, no bio, no basic-info text. Default is LIKE; it skips only on
-the user's two stated criteria. Every like sends the same opener.
+prompts, no bio, no basic-info text. Default is LIKE and the bar for a
+skip is a single rule: clearly overweight, in the strictest sense.
+Everything else, including every "can't tell" case, is a like. Every
+like sends the same opener.
+
+Leniency is enforced in code, not just asked for: with
+SKIP_NEEDS_HIGH_CONFIDENCE a skip only stands when the model rates its
+own confidence "high"; any other skip is flipped to a like by
+judge_common. Small local models turn uncertainty into skips no matter
+how the rubric is worded — this takes that option away.
 
 Why photo-only: with a small local vision model the text-driven rubric
 (see git history for the prompt-hijacking version of this mode) produced
@@ -25,8 +33,9 @@ PREFERENCES to change them.
 
 NAME = "twenty_somethings"
 DESCRIPTION = (
-    "Photo-only: judge the person in photos 1-2, default LIKE, fixed "
-    "opener on every like. Age band 21-29 via Hinge's in-app filter."
+    "Photo-only and lenient: like unless clearly overweight in photos "
+    "1-2; skips need high confidence or become likes; fixed opener on "
+    "every like. Age band 21-29 via Hinge's in-app filter."
 )
 
 # Judge-side age gate OFF: this mode tells the model to ignore all text,
@@ -47,6 +56,11 @@ JUDGE_FRAMES = 3
 # Every like sends this premade, whatever the model wrote.
 FORCE_PREMADE_ID = "can_i_be_honest"
 
+# A skip only stands if the model says confidence == "high". Any other
+# skip becomes a like (judge_common.apply_decision_guards). This is the
+# "when in doubt, like" rule, enforced.
+SKIP_NEEDS_HIGH_CONFIDENCE = True
+
 PREMADES = [
     {
         "id": "can_i_be_honest",
@@ -63,33 +77,40 @@ its text, and message_archetype to "premade". On a skip, message and
 premade_id are empty strings."""
 
 PREFERENCES = """
-PHOTO-ONLY MODE. Judge the person in the FIRST TWO PHOTOS and nothing
-else.
-
-Ignore every piece of text on the profile: prompts, prompt answers,
-bio, job, school, location, dating intentions. Do not read it. Do not
-mention it in your reasoning. Text is never a reason to like or skip.
+PHOTO-ONLY, LENIENT MODE. Look at the person in the FIRST TWO PHOTOS
+and nothing else. Ignore all text on the profile (prompts, bio, job,
+school, location). Text is never a reason to like or skip.
 
 Where the photos are: the first screenshot shows photo 1. Photo 2 is in
-the next screenshot or the one after. Judge only those two photos.
-Anything further down is not part of the decision.
+the next screenshot or the one after. Nothing further down counts.
 
-Default decision: LIKE.
+Default decision: LIKE. Be generous. The vast majority of profiles
+should be liked. A missed like costs far more than a bad like.
 
-SKIP only if, from photos 1 and 2, one of these is CLEARLY true:
-1. The person appears overweight.
-2. The person's face is clearly unattractive by common standards.
+There is exactly ONE skip rule:
+  SKIP only if the person is clearly overweight - obvious at a glance,
+  in the strictest sense of the word, in the first two photos.
 
-If you cannot tell - face turned away, sunglasses, far away, a group
-photo where the person isn't obvious, only one photo visible - LIKE.
-Unclear is not a skip.
+Everything else is a LIKE. In particular, ALL of these are LIKES:
+- blurry photo, dark photo, filtered photo, low quality
+- face turned away, partly hidden, sunglasses, hat, mask
+- far away, small in the frame, sitting, only the upper body visible
+- group photo where you are not sure which person it is
+- only one photo visible, or photo 2 cut off
+- average-looking, plain, not conventionally pretty - none of that
+  matters in this mode
+- ANY case where you are not sure. Not sure = LIKE.
 
-Confidence: "high" when both photos show the person's face and build
-clearly; "medium" when one does; "low" otherwise.
+Never skip for photo quality or because you cannot see the person
+well. If you cannot judge the person's build, the answer is LIKE.
 
-Reasoning: ONE sentence, about the photos only. Example: "photo 1 is a
-clear face shot, photo 2 is full-body on a hike, in shape." Never
-mention ethnicity, skin colour, age, or anything from the text.
+Confidence: "high" ONLY when photos 1 and 2 both show the person's
+full build clearly and the decision is obvious. Otherwise "medium" or
+"low". A skip that is not "high" confidence is treated as a like.
+
+Reasoning: ONE sentence about the photos. Example: "photo 1 is a clear
+full-body shot, photo 2 a close-up; in shape." Never mention ethnicity,
+skin colour, age, or anything from the text.
 
 skip_reason: "preferences" on a skip, "none" on a like.
 """
