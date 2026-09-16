@@ -4,10 +4,11 @@ PREFERENCES, AGE_MIN/MAX, and MESSAGE_VOICE come from the active mode (see
 `modes/`). Set ACTIVE_MODE here for the persistent default; override per-run
 via `python main.py --mode <name>`.
 
-The COORDS defaults below are calibrated for a 1080x2424 Pixel (10, or 9
-non-Pro) — emulator or real phone. If that's what you're running and Hinge
-hasn't shifted its layout, they should work as-is. Otherwise run
-`python calibrate.py` and update the values that don't match your device.
+The COORDS defaults below are calibrated for a Samsung Galaxy A05 (720x1600,
+3-button nav) against the Hinge layout as of September 2026. If that's what
+you're running and Hinge hasn't shifted its layout, they should work as-is.
+Otherwise run `python calibrate.py` and update the values that don't match
+your device.
 """
 
 from pathlib import Path
@@ -150,6 +151,18 @@ OLLAMA_FRAME_SCALE = 0.5
 # system prompt run ~15k tokens (~5.5k at OLLAMA_FRAME_SCALE = 0.5).
 # Raise if you add frames or a long rubric.
 OLLAMA_NUM_CTX = 16384
+
+# Hard cap on generated tokens per judgment. A complete submit_decision
+# JSON is ~150-300 tokens. Small open models can fall into a repetition
+# loop inside a string field, and under constrained JSON decoding they
+# then never emit the closing brace — without a cap that runs until the
+# context is full (seen on qwen2.5vl: 7k+ tokens, 7+ minutes, no end in
+# sight). A loop that hits this cap costs ~25s and is retried by main.py.
+OLLAMA_NUM_PREDICT = 400
+
+# Seconds to wait for one judgment before giving up. main.py's retry
+# logic takes over from there.
+OLLAMA_TIMEOUT = 300
 
 # OLLAMA_HOST: None or "" -> default http://localhost:11434
 #              "https://ollama.com" -> Ollama Cloud (requires OLLAMA_API_KEY)

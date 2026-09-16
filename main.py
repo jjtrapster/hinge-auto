@@ -5,6 +5,7 @@ Loop: capture profile frames -> ask Claude -> tap like or skip -> repeat.
 
 import argparse
 import hashlib
+import json
 import re
 import sys
 import time
@@ -24,6 +25,29 @@ import vision
 from judge_common import load_backend
 
 judge = load_backend().judge
+
+# Judge errors a retry won't fix, matched as substrings of repr(e). Halting
+# beats blindly force-skipping: every skip without a decision burns a
+# profile from the queue and looks robotic to Hinge. Saw this once when the
+# Anthropic credit balance hit zero mid-run: 124 profiles got blindly
+# skipped before anyone noticed.
+FATAL_JUDGE_ERRORS = (
+    # Anthropic: billing / auth
+    "credit balance is too low",
+    "authentication_error",
+    "invalid_api_key",
+    "permission_error",
+    # Ollama: server not running, model not pulled
+    "Connection refused",
+    "ConnectError",
+    "ConnectionError",
+    "not found, try pulling",
+)
+
+# Backstop for failures the substring list doesn't name: if the judge fails
+# every attempt on this many profiles in a row, the backend is down in some
+# new way — halt rather than keep skipping blind.
+MAX_CONSECUTIVE_JUDGE_FAILURES = 2
 
 
 def _profile_region_hash(png: bytes) -> str:
@@ -58,20 +82,29 @@ def capture_profile() -> list[bytes]:
     return frames
 
 
-def scroll_back_to_top(swipes: int | None = None) -> None:
-    """Scroll back to the top of the profile.
+def scroll_back_to_top(swipes: int | None = None) -> int:
+    """Scroll back to the top of the profile. Returns the swipes used.
 
     Hinge uses momentum scrolling; each swipe's actual travel is much less
-    than the gesture's pixel distance. Default `swipes` is `FRAMES_PER_PROFILE
-    * 2 + 4` (18 with FRAMES=7) — enough to recover from a full scroll-down
-    through the profile. Pass a smaller `swipes` for defensive top-scrolls
-    where the profile is already at or near the top.
+    than the gesture's pixel distance. `swipes` is a ceiling — default
+    `FRAMES_PER_PROFILE * 2 + 4` (18 with FRAMES=7), enough to recover from
+    a full scroll-down through the profile. We stop early as soon as a
+    swipe leaves the profile region unchanged, which is what the top looks
+    like: a profile already at the top costs one swipe instead of five, a
+    full recovery roughly half the ceiling. Animated content that never
+    settles just falls through to the ceiling.
     """
     if swipes is None:
         swipes = config.FRAMES_PER_PROFILE * 2 + 4
-    for _ in range(swipes):
+    before = _profile_region_hash(adb.screenshot())
+    for used in range(1, swipes + 1):
         adb.scroll_up()
         adb.jitter_sleep("after_scroll")
+        after = _profile_region_hash(adb.screenshot())
+        if after == before:
+            return used
+        before = after
+    return swipes
 
 
 def do_skip() -> None:
@@ -185,6 +218,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              "Must match a file under modes/<name>.py.",
     )
     p.add_argument(
+        "--soft-run",
+        action="store_true",
+        help="Judge and skip as normal, but stop at the first LIKE decision "
+             "without tapping anything. Prints {name, decision, opener} as "
+             "JSON and leaves Hinge on that profile for inspection.",
+    )
+    p.add_argument(
         "--set-filters",
         action="store_true",
         help="Before looping, drive the in-app age slider to match the "
@@ -227,7 +267,12 @@ def main() -> int:
         else "no age gate"
     )
     print(f"Mode:     {config.MODE_NAME} ({age_band})")
-    print(f"Run:      {'DRY RUN (no taps)' if config.DRY_RUN else 'LIVE (will tap)'}")
+    run_label = (
+        "SOFT RUN (skip until first like, then stop; no like is sent)"
+        if args.soft_run else
+        "DRY RUN (no taps)" if config.DRY_RUN else "LIVE (will tap)"
+    )
+    print(f"Run:      {run_label}")
     print(f"Max likes: {config.MAX_LIKES_PER_SESSION}, "
           f"max profiles: {config.MAX_PROFILES_PER_SESSION}")
 
@@ -268,6 +313,7 @@ def main() -> int:
     total_seconds = 0.0
     last_frame0_hash: str | None = None
     duplicate_streak = 0
+    judge_failures_in_a_row = 0
 
     while profiles_seen < config.MAX_PROFILES_PER_SESSION:
         profiles_seen += 1
@@ -334,18 +380,7 @@ def main() -> int:
             except Exception as e:
                 err = repr(e)
                 print(f"Judge attempt {attempt + 1}/3 failed: {e}")
-                # Halt on errors that won't recover with a retry — burning
-                # through Hinge swipes blind (force-skipping every profile
-                # without a real decision) eats the daily quota and looks
-                # robotic to Hinge. Saw this once when the Anthropic credit
-                # balance hit zero mid-run: 124 profiles got blindly skipped
-                # before we noticed.
-                if any(s in err for s in (
-                    "credit balance is too low",
-                    "authentication_error",
-                    "invalid_api_key",
-                    "permission_error",
-                )):
+                if any(s in err for s in FATAL_JUDGE_ERRORS):
                     fatal_error = err
                     break
                 if attempt < 2:
@@ -356,9 +391,15 @@ def main() -> int:
             break
         t_judge = time.monotonic() - t1
         if decision is None:
+            judge_failures_in_a_row += 1
+            if judge_failures_in_a_row >= MAX_CONSECUTIVE_JUDGE_FAILURES:
+                print(f"\nJudge failed on {judge_failures_in_a_row} profiles in a "
+                      "row — halting instead of burning Hinge swipes blind.")
+                break
             print("Judge failed 3 times — skipping this profile to keep the loop alive.")
             do_skip()
             continue
+        judge_failures_in_a_row = 0
 
         print(f"Name:     {decision.name}")
         print(f"Decision: {decision.decision} ({decision.confidence}) "
@@ -369,6 +410,20 @@ def main() -> int:
         save_debug(frames, decision, profiles_seen)
 
         t2 = time.monotonic()
+        if args.soft_run and decision.decision == "like":
+            print("\nSOFT RUN: first LIKE found — stopping here without tapping.")
+            print(json.dumps({
+                "name": decision.name,
+                "decision": decision.decision,
+                "opener": decision.message,
+            }, indent=2))
+            metrics.log_profile(profiles_seen, decision, {
+                "capture_seconds": round(t_capture, 2),
+                "judge_seconds": round(t_judge, 2),
+                "act_seconds": 0.0,
+                "total_seconds": round(t_capture + t_judge, 2),
+            })
+            break
         if decision.decision == "like":
             if likes_sent >= config.MAX_LIKES_PER_SESSION:
                 print(f"Hit max likes cap ({config.MAX_LIKES_PER_SESSION}). Stopping.")
