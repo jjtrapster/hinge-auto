@@ -134,14 +134,33 @@ def swipe(x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
           str(x1), str(y1), str(x2), str(y2), str(duration_ms)])
 
 
+def _jitter(v: int, amount: int) -> int:
+    return v + random.randint(-amount, amount)
+
+
+def _scroll(direction: int) -> None:
+    """One randomised scroll gesture. direction=+1 scrolls the content
+    down (finger swipes up), -1 scrolls up. Start/end points and duration
+    are jittered per call (config.SCROLL_JITTER) so no two swipes match."""
+    c, j = config.COORDS, config.SCROLL_JITTER
+    x_from = _jitter(c["scroll_from"][0], j["x_px"])
+    x_to = _jitter(c["scroll_to"][0], j["x_px"])
+    y_from = _jitter(c["scroll_from"][1], j["y_px"])
+    y_to = _jitter(c["scroll_to"][1], j["y_px"])
+    pct = j["duration_pct"]
+    duration = int(c["scroll_duration_ms"] * random.uniform(1 - pct, 1 + pct))
+    if direction > 0:
+        swipe(x_from, y_from, x_to, y_to, duration)
+    else:
+        swipe(x_to, y_to, x_from, y_from, duration)
+
+
 def scroll_down() -> None:
-    c = config.COORDS
-    swipe(*c["scroll_from"], *c["scroll_to"], c["scroll_duration_ms"])
+    _scroll(+1)
 
 
 def scroll_up() -> None:
-    c = config.COORDS
-    swipe(*c["scroll_to"], *c["scroll_from"], c["scroll_duration_ms"])
+    _scroll(-1)
 
 
 def jitter_sleep(key: str) -> None:

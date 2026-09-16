@@ -28,6 +28,14 @@ MESSAGE_VOICE = None
 MAX_LIKES_PER_SESSION = None
 MAX_PROFILES_PER_SESSION = None
 
+# Optional: send only the first N captured frames to the judge (the full
+# scroll still happens). None = send all FRAMES_PER_PROFILE frames.
+JUDGE_FRAMES = None
+
+# Optional: force every like to send one premade (by id) regardless of
+# what the model wrote. None = the model picks or writes the opener.
+FORCE_PREMADE_ID = None
+
 # Optional verbatim openers the judge can pick from instead of writing
 # fresh copy. The selected `message` is sent EXACTLY as written. Leave
 # as `[]` to disable.

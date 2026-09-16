@@ -322,7 +322,11 @@ def main() -> int:
         t0 = time.monotonic()
         frames = capture_profile()
         t_capture = time.monotonic() - t0
-        print(f"Captured {len(frames)} frames")
+        # The mode may cap how many frames the judge sees (JUDGE_FRAMES);
+        # the full scroll still happens so the phone behaviour looks human.
+        judge_frames = frames[:config.JUDGE_FRAMES] if config.JUDGE_FRAMES else frames
+        print(f"Captured {len(frames)} frames"
+              + (f" (judging first {len(judge_frames)})" if len(judge_frames) < len(frames) else ""))
 
         # Out-of-candidates detection: if frame 0 shows the "You've seen
         # everyone for now" screen, we're stuck. If --rotate is on, advance
@@ -375,7 +379,7 @@ def main() -> int:
         fatal_error = None
         for attempt in range(3):
             try:
-                decision = judge(frames)
+                decision = judge(judge_frames)
                 break
             except Exception as e:
                 err = repr(e)

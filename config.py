@@ -26,6 +26,8 @@ AGE_MAX: int | None = None
 MESSAGE_VOICE: str | None = None
 MODE_NAME: str = ""
 PREMADES: list[dict] = []
+JUDGE_FRAMES: int | None = None      # send only the first N captured frames to the judge
+FORCE_PREMADE_ID: str | None = None  # every like sends this premade, whatever the model wrote
 
 # ---------- Run mode ----------
 # DRY_RUN = False -> actually like / send messages (default)
@@ -87,7 +89,7 @@ COORDS = {
     # travels ~600-900 px with momentum; 7 frames cover a full profile.
     "scroll_from":       (360, 1150),
     "scroll_to":         (360, 450),
-    "scroll_duration_ms": 350,
+    "scroll_duration_ms": 300,       # centre value; see SCROLL_JITTER
 
     # Bottom nav (5 evenly-spaced icons, band y 1397-1510).
     "nav_discover":      (72, 1453),
@@ -112,9 +114,14 @@ COORDS = {
 }
 
 # ---------- Timing ----------
+# Scroll gesture randomisation: each swipe's start and end points move by
+# up to +/- x_px / y_px and its duration by +/- duration_pct, so no two
+# swipes are pixel-identical.
+SCROLL_JITTER = {"x_px": 40, "y_px": 60, "duration_pct": 0.25}
+
 # Random delay between actions (seconds, min/max for jitter).
 DELAYS = {
-    "after_scroll":     (0.6, 1.0),
+    "after_scroll":     (0.4, 0.75),
     "after_screenshot": (0.2, 0.4),
     "after_tap":        (0.8, 1.4),
     "after_like_sent":  (2.5, 4.0),
@@ -196,6 +203,13 @@ def _apply_mode() -> None:
     g["MESSAGE_VOICE"] = getattr(mode, "MESSAGE_VOICE", None)
     g["MODE_NAME"] = mode.NAME
     g["PREMADES"] = list(getattr(mode, "PREMADES", []))
+    g["JUDGE_FRAMES"] = getattr(mode, "JUDGE_FRAMES", None)
+    g["FORCE_PREMADE_ID"] = getattr(mode, "FORCE_PREMADE_ID", None)
+    if g["FORCE_PREMADE_ID"] and g["FORCE_PREMADE_ID"] not in {p["id"] for p in g["PREMADES"]}:
+        raise ValueError(
+            f"mode {mode.NAME!r}: FORCE_PREMADE_ID={g['FORCE_PREMADE_ID']!r} "
+            "is not an id in its PREMADES"
+        )
     for k in ("MAX_LIKES_PER_SESSION", "MAX_PROFILES_PER_SESSION"):
         v = getattr(mode, k, None)
         if v is not None:

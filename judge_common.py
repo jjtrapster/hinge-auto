@@ -268,9 +268,24 @@ def build_system_prompt() -> str:
 
 
 def enforce_premade_verbatim(decision: Decision) -> None:
-    """If the model picked a premade by id, overwrite `message` with the
-    canonical text so character drift can't leak. Unknown ids are
-    cleared so the message goes out as-written."""
+    """Make the message obey the mode regardless of what the model wrote.
+
+    - skip: message is always empty (small models sometimes attach an
+      opener to a skip).
+    - like with config.FORCE_PREMADE_ID set: the message is always that
+      premade's text — the mode has decided every like sends one line.
+    - like with a premade_id: overwrite `message` with the canonical text
+      so character drift can't leak. Unknown ids are cleared so the
+      message goes out as-written.
+    """
+    if decision.decision == "skip":
+        decision.message = ""
+        decision.message_archetype = "empty"
+        decision.premade_id = ""
+        return
+    forced = getattr(config, "FORCE_PREMADE_ID", None)
+    if forced:
+        decision.premade_id = forced
     if not decision.premade_id:
         return
     for p in config.PREMADES:
