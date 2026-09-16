@@ -80,6 +80,7 @@ COORDS = {
     # Skip / like action targets (Discover screen, photo 1 at top)
     "skip_button":       (95, 1301),    # floating X, same spot in every frame
     "heart_photo_1":     (617, 895),    # heart on photo 1 when scrolled to top
+    "photo_1_center":    (360, 660),    # double-tap target: photo 1 spans x 38-682, y 340-985
 
     # Inline compose card. Fallbacks only — vision.py re-finds them at
     # tap-time because the card sits wherever the tapped heart was.

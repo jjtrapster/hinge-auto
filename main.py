@@ -115,8 +115,62 @@ def do_skip() -> None:
     adb.jitter_sleep("after_skip")
 
 
+def open_compose_card() -> tuple[int, int]:
+    """Open the like/compose card on the top card and return Send Like's
+    position. Assumes the profile is scrolled to the top.
+
+    Primary: double-tap the centre of photo 1. The whole photo is the
+    target, so it doesn't care where the heart is or what colour the
+    photo's corner is (a dark corner swallowed the heart detector on a
+    real profile). Fallback: find the heart by vision and tap it, which
+    covers layouts that open with a prompt card instead of a photo.
+    Each attempt is verified by finding Send Like on screen; if neither
+    works, raise so the caller skips the profile.
+    """
+    frame = adb.screenshot()
+    heart_xy = vision.find_first_heart(frame)
+    attempts = [("double-tap photo 1", lambda: adb.double_tap(*config.COORDS["photo_1_center"]))]
+    if heart_xy is not None:
+        attempts.append(("tap heart", lambda: adb.tap(*heart_xy)))
+    for label, action in attempts:
+        action()
+        adb.jitter_sleep("after_tap")
+        send_xy = vision.find_send_like(adb.screenshot())
+        if send_xy is not None:
+            print(f"compose card opened via {label}; Send Like at {send_xy}")
+            return send_xy
+        print(f"{label} did not open the compose card")
+    raise RuntimeError("couldn't open the compose card (double-tap and heart both failed)")
+
+
+def dismiss_compose_card() -> bool:
+    """Close an open compose card without sending anything, keeping the
+    same profile on screen. Returns True when Send Like is gone.
+
+    Measured on the A05: BACK closes the keyboard only, the card stays
+    open; a BACK with nothing to close exits Hinge, so BACK is sent only
+    while the keyboard is up. Switching tabs Standouts -> Discover then
+    collapses the card and keeps the profile.
+    """
+    if vision.find_send_like(adb.screenshot()) is None:
+        return True
+    if adb.keyboard_shown():
+        adb.back()
+        adb.jitter_sleep("after_tap")
+        if vision.find_send_like(adb.screenshot()) is None:
+            return True
+    adb.tap(*config.COORDS["nav_standouts"])
+    adb.jitter_sleep("after_tap")
+    adb.tap(*config.COORDS["nav_discover"])
+    adb.jitter_sleep("after_tap")
+    gone = vision.find_send_like(adb.screenshot()) is None
+    print("compose card dismissed" if gone else "WARN: compose card still open after tab switch")
+    return gone
+
+
 def do_like(message: str = "") -> None:
-    """In live mode: scroll to top, tap heart, type message (if any), tap Send Like.
+    """In live mode: scroll to top, open the compose card (double-tap photo 1,
+    heart tap as fallback), type message (if any), tap Send Like.
     In dry run: advance by skipping (so we never send an actual like).
 
     Send Like / comment input positions are found at tap-time via vision —
@@ -131,23 +185,7 @@ def do_like(message: str = "") -> None:
     # a heart that's already low on screen (which it is after capture),
     # Send Like ends up off-screen and undetectable. Worth the ~14s.
     scroll_back_to_top()
-    heart_xy = vision.find_first_heart(adb.screenshot())
-    if heart_xy is None:
-        # Static fallback used to fire here, but it silently misses on
-        # profiles where the heart's real position differs from the
-        # calibrated coord (different layouts, partial scroll-back). The
-        # loop would then type/tap into the void and never advance,
-        # producing an infinite-loop on the same profile. Bail to skip
-        # instead so the profile advances and the loop survives.
-        raise RuntimeError("vision: couldn't find photo-1 heart after scroll-back")
-    adb.tap(*heart_xy)
-    adb.jitter_sleep("after_tap")
-
-    send_xy = vision.find_send_like(adb.screenshot())
-    if send_xy is None:
-        # Same reasoning as the heart fallback above — silent fallback
-        # masks a real failure and traps the loop. Skip instead.
-        raise RuntimeError("vision: couldn't find Send Like after heart tap")
+    send_xy = open_compose_card()
     comment_xy = vision.find_comment_input(send_xy)
 
     if message:
@@ -443,8 +481,19 @@ def main() -> int:
             if likes_sent >= config.MAX_LIKES_PER_SESSION:
                 print(f"Hit max likes cap ({config.MAX_LIKES_PER_SESSION}). Stopping.")
                 break
-            try:
-                do_like(decision.message)
+            liked = False
+            for attempt in (1, 2):
+                try:
+                    do_like(decision.message)
+                    liked = True
+                    break
+                except Exception as e:
+                    print(f"do_like attempt {attempt}/2 failed: {e!r}")
+                    try:
+                        dismiss_compose_card()
+                    except Exception as e2:
+                        print(f"dismiss_compose_card failed: {e2!r}")
+            if liked:
                 likes_sent += 1
                 print(f"LIKE SENT to {decision.name} with opener {decision.message!r} "
                       f"({likes_sent}/{config.MAX_LIKES_PER_SESSION}).")
@@ -457,8 +506,8 @@ def main() -> int:
                         "total_seconds": round(t_capture + t_judge + time.monotonic() - t2, 2),
                     })
                     break
-            except Exception as e:
-                print(f"do_like failed: {e!r} — recovering by skipping this profile.")
+            else:
+                print("Giving up on this like — recovering by skipping this profile.")
                 try:
                     do_skip()
                 except Exception as e2:

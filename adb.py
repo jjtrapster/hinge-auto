@@ -117,6 +117,24 @@ def tap(x: int, y: int) -> None:
     _run(["shell", "input", "tap", str(x), str(y)])
 
 
+def double_tap(x: int, y: int) -> None:
+    """Two taps inside Android's 300 ms double-tap window.
+
+    Issued as one device-side shell line: two separate adb round-trips
+    are too slow on a low-end phone and register as two single taps.
+    Measured 0.15 s end-to-end on the A05.
+    """
+    _run(["shell", f"input tap {x} {y} && input tap {x} {y}"])
+
+
+def back() -> None:
+    _run(["shell", "input", "keyevent", "KEYCODE_BACK"])
+
+
+def keyboard_shown() -> bool:
+    return "mInputShown=true" in _shell(["dumpsys", "input_method"])
+
+
 def input_text(text: str) -> None:
     """Type `text` into the currently focused field via `adb shell input text`.
 
