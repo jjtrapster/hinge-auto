@@ -218,6 +218,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              "Must match a file under modes/<name>.py.",
     )
     p.add_argument(
+        "--max-likes",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Override config.MAX_LIKES_PER_SESSION for this run. The loop "
+             "stops as soon as the Nth like has been sent. --max-likes 1 "
+             "is the live counterpart of --soft-run: same per-profile "
+             "reporting, but the like and opener actually go out.",
+    )
+    p.add_argument(
         "--soft-run",
         action="store_true",
         help="Judge and skip as normal, but stop at the first LIKE decision "
@@ -257,6 +267,11 @@ def main() -> int:
     if args.mode:
         config.ACTIVE_MODE = args.mode
         config._apply_mode()
+    if args.max_likes is not None:
+        if args.max_likes < 1:
+            print("--max-likes must be at least 1.")
+            return 2
+        config.MAX_LIKES_PER_SESSION = args.max_likes
 
     serial = adb.check_device()
     print(f"Connected to: {serial}")
@@ -431,6 +446,17 @@ def main() -> int:
             try:
                 do_like(decision.message)
                 likes_sent += 1
+                print(f"LIKE SENT to {decision.name} with opener {decision.message!r} "
+                      f"({likes_sent}/{config.MAX_LIKES_PER_SESSION}).")
+                if likes_sent >= config.MAX_LIKES_PER_SESSION:
+                    print(f"Reached max likes ({config.MAX_LIKES_PER_SESSION}). Stopping.")
+                    metrics.log_profile(profiles_seen, decision, {
+                        "capture_seconds": round(t_capture, 2),
+                        "judge_seconds": round(t_judge, 2),
+                        "act_seconds": round(time.monotonic() - t2, 2),
+                        "total_seconds": round(t_capture + t_judge + time.monotonic() - t2, 2),
+                    })
+                    break
             except Exception as e:
                 print(f"do_like failed: {e!r} — recovering by skipping this profile.")
                 try:
