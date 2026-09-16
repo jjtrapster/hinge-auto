@@ -407,22 +407,18 @@ def main() -> int:
         print(f"Reason:   {decision.reasoning}")
         if decision.message:
             print(f"Message:  {decision.message}")
+        # Live record, same shape for every profile. Nothing is written to
+        # disk unless config.SAVE_SESSION_LOG is on.
+        print(json.dumps({
+            "name": decision.name,
+            "decision": decision.decision,
+            "opener": decision.message,
+        }, indent=2))
         save_debug(frames, decision, profiles_seen)
 
         t2 = time.monotonic()
         if args.soft_run and decision.decision == "like":
             print("\nSOFT RUN: first LIKE found — stopping here without tapping.")
-            print(json.dumps({
-                "name": decision.name,
-                "decision": decision.decision,
-                "opener": decision.message,
-            }, indent=2))
-            metrics.log_profile(profiles_seen, decision, {
-                "capture_seconds": round(t_capture, 2),
-                "judge_seconds": round(t_judge, 2),
-                "act_seconds": 0.0,
-                "total_seconds": round(t_capture + t_judge, 2),
-            })
             break
         if decision.decision == "like":
             if likes_sent >= config.MAX_LIKES_PER_SESSION:

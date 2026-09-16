@@ -1,8 +1,10 @@
 """Per-profile structured logging for the autopilot loop.
 
-Each profile run produces one JSONL line in `debug/session_log.jsonl`
-with timing, token usage, decision, and message metadata. Append-only
-and machine-parseable so chart-making downstream is trivial.
+When `config.SAVE_SESSION_LOG` is True, each profile run produces one
+JSONL line in `debug/session_log.jsonl` with timing, token usage,
+decision, and message metadata. Append-only and machine-parseable so
+chart-making downstream is trivial. Off by default: nothing is written
+to disk and the loop only prints decisions to the screen.
 """
 
 import json
@@ -37,7 +39,10 @@ def log_profile(
     timing: dict[str, float],
     log_path: Path | None = None,
 ) -> None:
-    """Append a JSONL record for one profile."""
+    """Append a JSONL record for one profile. No-op unless
+    config.SAVE_SESSION_LOG is True."""
+    if not getattr(config, "SAVE_SESSION_LOG", False):
+        return
     if log_path is None:
         log_path = config.DEBUG_DIR / "session_log.jsonl"
     log_path.parent.mkdir(parents=True, exist_ok=True)

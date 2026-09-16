@@ -174,6 +174,10 @@ BASE_DIR = Path(__file__).parent
 DEBUG_DIR = BASE_DIR / "debug"
 SCREENSHOTS_DIR = BASE_DIR / "screenshots"
 SAVE_DEBUG_FRAMES = False  # True keeps frames + decisions in debug/ for review
+# True appends one JSONL line per judged profile to debug/session_log.jsonl.
+# False (default) keeps no record on disk — decisions only appear live on
+# screen as they happen.
+SAVE_SESSION_LOG = False
 
 
 def _apply_mode() -> None:
